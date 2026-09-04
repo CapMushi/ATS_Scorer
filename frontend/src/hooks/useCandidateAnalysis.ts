@@ -104,6 +104,12 @@ export function useCandidateAnalysis({
       return;
     }
 
+    // Phase 6: Pagination Allowance (Max 10 per run to prevent 429 Too Many Requests)
+    if (filesToProcess.length > 10) {
+      filesToProcess = filesToProcess.slice(0, 10);
+      setErrorMsg("Processing limited to 10 CVs per batch to prevent rate limits. Click 'Run Analysis' again when this batch finishes.");
+    }
+
     // Save the snapshot of skills being used for this run
     setLastProcessedSkills(currentSkillsStr);
     localforage.setItem('cached_last_processed_skills', currentSkillsStr);

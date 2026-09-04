@@ -183,6 +183,11 @@
   },
   "active": "c60f80437d86b9ea",
   "lastOpenFiles": [
+    "workflow/backend_src_llm_client.md",
+    "workflow/frontend_src_components_AIOrbFace.md",
+    "workflow/backend_src_parser_section_splitter.md",
+    "workflow/frontend_src_lib_api.md",
+    "workflow/backend_src_scorer_skill_evaluator.md",
     "workflow/frontend_src_components_CircularGallery.md",
     "workflow/frontend_src_registry_magicui_interactive-hover-button.md",
     "workflow/frontend_src_registry_magicui_animated-circular-progress-bar.md",
@@ -202,13 +207,8 @@
     "workflow/frontend_src_components_SpecularButton.tsx.md",
     "workflow/frontend_src_lib_utils.md",
     "workflow/frontend_src_lib_constants_universities.md",
-    "workflow/frontend_src_lib_api.md",
     "workflow/frontend_src_hooks_useCandidateAnalysis.md",
     "workflow/frontend_src_components_SkillsFilter.md",
-    "workflow/frontend_src_components_ScrollExpand.md",
-    "workflow/frontend_src_components_ProgressBar.md",
-    "workflow/frontend_src_components_GridLoader.md",
-    "workflow/frontend_src_components_GradientWaves.md",
     "workflow"
   ]
 }

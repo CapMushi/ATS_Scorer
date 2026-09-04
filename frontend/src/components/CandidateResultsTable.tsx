@@ -1,5 +1,5 @@
 import React from "react";
-import { User, FileSpreadsheet } from "lucide-react";
+import { User, FileSpreadsheet, Trash2, RefreshCw } from "lucide-react";
 import { motion } from "framer-motion";
 import GlassIcons from "@/components/GlassIcons";
 import SpecularButton from "@/components/SpecularButton";
@@ -13,8 +13,9 @@ interface CandidateResultsTableProps {
   yoe: number;
   setYoe: (yoe: number) => void;
   strictMode: boolean;
-  setStrictMode: (strict: boolean) => void;
   setSelectedCandidate: (candidate: any) => void;
+  onRemoveCandidate?: (candidate: any) => void;
+  onRetryCandidate?: (candidate: any) => void;
 }
 
 export default function CandidateResultsTable({
@@ -26,7 +27,9 @@ export default function CandidateResultsTable({
   setYoe,
   strictMode,
   setStrictMode,
-  setSelectedCandidate
+  setSelectedCandidate,
+  onRemoveCandidate,
+  onRetryCandidate
 }: CandidateResultsTableProps) {
 
   const handleDownloadCSV = async () => {
@@ -161,7 +164,19 @@ export default function CandidateResultsTable({
                           color: 'indigo',
                           label: 'View Profile',
                           onClick: () => setSelectedCandidate(cand)
-                        }
+                        },
+                        ...(!cand.llm_enhanced && onRetryCandidate ? [{
+                          icon: <RefreshCw size={18} strokeWidth={2.5} />,
+                          color: 'green',
+                          label: 'Retry AI Analysis',
+                          onClick: () => onRetryCandidate(cand)
+                        }] : []),
+                        ...(onRemoveCandidate ? [{
+                          icon: <Trash2 size={18} strokeWidth={2.5} />,
+                          color: 'red',
+                          label: 'Remove Candidate',
+                          onClick: () => onRemoveCandidate(cand)
+                        }] : [])
                       ]}
                     />
                   </td>

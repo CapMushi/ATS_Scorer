@@ -36,6 +36,9 @@ app.add_middleware(
 # Register all routes from the API module
 app.include_router(router)
 
+from src.api.email_routes import router as email_router
+app.include_router(email_router)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=BACKEND_PORT)

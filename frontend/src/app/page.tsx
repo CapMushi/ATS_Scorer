@@ -11,6 +11,7 @@ import { NoiseTexture } from "@/registry/magicui/noise-texture";
 import CosmicDust from "@/components/lightswind/cosmic-dust";
 import UploadSection from "@/components/UploadSection";
 import ActionControls from "@/components/ActionControls";
+import EmailImportModal from "@/components/EmailImportModal";
 import { Zap, Wand2 } from "lucide-react";
 
 import BatchEngine from "@/components/BatchEngine";
@@ -37,6 +38,7 @@ export default function Home() {
   const [showJdDropdown, setShowJdDropdown] = useState(false);
   const [showCvDropdown, setShowCvDropdown] = useState(false);
   const [isFastMode, setIsFastMode] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
 
   const jdDropdownRef = useRef<HTMLDivElement>(null);
   const cvDropdownRef = useRef<HTMLDivElement>(null);
@@ -121,6 +123,29 @@ export default function Home() {
     localforage.removeItem('cached_last_processed_skills');
     setLastProcessedSkills("");
     setShowCvDropdown(false);
+  };
+
+  const handleRemoveCandidateResult = (candidateToRemove: any) => {
+    setAllCandidates(prev => {
+      const updated = prev.filter(c => c.file_name !== candidateToRemove.file_name);
+      localforage.setItem('cached_candidates', updated);
+      return updated;
+    });
+    setCvFiles(prev => {
+      const updated = prev.filter(f => f.name !== candidateToRemove.file_name);
+      localforage.setItem('cached_files', updated);
+      return updated;
+    });
+  };
+
+  const handleRetryCandidate = (candidateToRetry: any) => {
+    setAllCandidates(prev => {
+      const updated = prev.filter(c => c.file_name !== candidateToRetry.file_name);
+      localforage.setItem('cached_candidates', updated);
+      return updated;
+    });
+    // Do NOT remove from cvFiles, so they get reprocessed next time Run Analysis is clicked
+    setErrorMsg(`Queued ${candidateToRetry.candidate_name} for Retry. Click 'Run Analysis' to process them with AI.`);
   };
 
   const handleRemoveJdFile = () => {
@@ -290,6 +315,7 @@ export default function Home() {
             handleRemoveJdFile={handleRemoveJdFile}
             handleRemoveCvFile={handleRemoveCvFile}
             handleClearAllCvs={handleClearAllCvs}
+            onOpenEmailImport={() => setShowEmailModal(true)}
           />
         </div>
 
@@ -329,6 +355,8 @@ export default function Home() {
               strictMode={strictMode}
               setStrictMode={setStrictMode}
               setSelectedCandidate={setSelectedCandidate}
+              onRemoveCandidate={handleRemoveCandidateResult}
+              onRetryCandidate={handleRetryCandidate}
             />
           </div>
         </div>
@@ -393,6 +421,14 @@ export default function Home() {
             }}
           />
         )}
+        
+        <EmailImportModal 
+          isOpen={showEmailModal} 
+          onClose={() => setShowEmailModal(false)}
+          onImportComplete={(files) => {
+             handleAddCvFiles(files);
+          }}
+        />
       </div>
     </main>
   );

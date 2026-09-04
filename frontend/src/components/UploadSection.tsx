@@ -26,6 +26,7 @@ interface UploadSectionProps {
   handleRemoveJdFile: () => void;
   handleRemoveCvFile: (idx: number) => void;
   handleClearAllCvs: () => void;
+  onOpenEmailImport: () => void;
 }
 
 export default function UploadSection({
@@ -40,7 +41,8 @@ export default function UploadSection({
   handleAddCvFiles,
   handleRemoveJdFile,
   handleRemoveCvFile,
-  handleClearAllCvs
+  handleClearAllCvs,
+  onOpenEmailImport
 }: UploadSectionProps) {
   const jdInputRef = useRef<HTMLInputElement>(null);
   const cvInputRef = useRef<HTMLInputElement>(null);
@@ -161,6 +163,18 @@ export default function UploadSection({
             </motion.div>
           )}
         </AnimatePresence>
+      </div>
+
+      {/* Import from Email Button */}
+      <div className="relative">
+        <div className="flex items-center bg-white/[0.03] rounded-full border border-white/10 p-1 backdrop-blur-sm transition-all hover:bg-white/[0.05] hover:border-emerald-500/40 shadow-[inset_0_1px_2px_rgba(255,255,255,0.05)]">
+          <InteractiveHoverButton
+            text="Import from Gmail"
+            loaderColor="green"
+            className="!border-0 !bg-transparent text-emerald-400"
+            onClick={onOpenEmailImport}
+          />
+        </div>
       </div>
 
       {/* CVs Button & Dropdown */}

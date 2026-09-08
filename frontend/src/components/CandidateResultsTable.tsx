@@ -13,6 +13,7 @@ interface CandidateResultsTableProps {
   yoe: number;
   setYoe: (yoe: number) => void;
   strictMode: boolean;
+  setStrictMode: (val: boolean) => void;
   setSelectedCandidate: (candidate: any) => void;
   onRemoveCandidate?: (candidate: any) => void;
   onRetryCandidate?: (candidate: any) => void;

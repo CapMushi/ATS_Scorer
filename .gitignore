@@ -70,3 +70,5 @@ out/
 docs/
 scratch/
 tests/
+.vercel
+.env*

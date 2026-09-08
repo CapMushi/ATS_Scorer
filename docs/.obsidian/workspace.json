@@ -183,7 +183,9 @@
   },
   "active": "c60f80437d86b9ea",
   "lastOpenFiles": [
+    "workflow/frontend_src_components_BorderGlow.md",
     "workflow/backend_src_llm_client.md",
+    "workflow/frontend_src_lib_utils.md",
     "workflow/frontend_src_components_AIOrbFace.md",
     "workflow/backend_src_parser_section_splitter.md",
     "workflow/frontend_src_lib_api.md",
@@ -205,10 +207,8 @@
     "workflow/frontend_src_components_UniversityFilter.tsx.md",
     "workflow/frontend_src_components_SplitFlapText.tsx.md",
     "workflow/frontend_src_components_SpecularButton.tsx.md",
-    "workflow/frontend_src_lib_utils.md",
     "workflow/frontend_src_lib_constants_universities.md",
     "workflow/frontend_src_hooks_useCandidateAnalysis.md",
-    "workflow/frontend_src_components_SkillsFilter.md",
     "workflow"
   ]
 }

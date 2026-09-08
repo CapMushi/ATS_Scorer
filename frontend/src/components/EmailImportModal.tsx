@@ -16,6 +16,7 @@ export default function EmailImportModal({ isOpen, onClose, onImportComplete }: 
   const [isScanning, setIsScanning] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [scanResult, setScanResult] = useState<{ total_found: number, files: any[] } | null>(null);
+  const [importSuccess, setImportSuccess] = useState<{ count: number } | null>(null);
 
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,7 +70,7 @@ export default function EmailImportModal({ isOpen, onClose, onImportComplete }: 
       }
       
       onImportComplete(downloadedFiles);
-      onClose();
+      setImportSuccess({ count: downloadedFiles.length });
     } catch (error: any) {
       setErrorMsg("Failed to download some attachments");
     } finally {
@@ -101,7 +102,16 @@ export default function EmailImportModal({ isOpen, onClose, onImportComplete }: 
               <h2 className="text-xl font-medium text-white tracking-wide">Import from Gmail</h2>
             </div>
             
-            {!scanResult ? (
+            {importSuccess ? (
+              <div className="text-center py-6">
+                <div className="text-4xl font-light text-emerald-400 mb-2">{importSuccess.count}</div>
+                <div className="text-gray-400 mb-8">CVs successfully imported to ATS</div>
+                <button onClick={() => { setScanResult(null); setImportSuccess(null); }}
+                        className="w-full bg-[#1A1F26] hover:bg-[#2E3743] border border-[#2E3743] text-white font-medium rounded-lg py-2 transition flex items-center justify-center gap-2">
+                  Scan Again
+                </button>
+              </div>
+            ) : !scanResult ? (
               <form onSubmit={handleScan} className="space-y-4">
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Gmail Address</label>

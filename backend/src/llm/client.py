@@ -249,8 +249,29 @@ class LLMClient:
             try:
                 parsed = json.loads(repaired)
             except json.JSONDecodeError as e:
-                logger.warning(f"Failed to parse LLM JSON response: {e}")
-                return None
+                logger.warning(f"Failed to parse primary LLM JSON response: {e}")
+                pass
+                
+        # If Groq gave us invalid JSON, force a fallback to Gemini
+        if parsed is None and self._gemini_available and time.time() >= self._gemini_rate_limit_until:
+            logger.warning("Primary LLM returned malformed JSON. Forcing fallback to Gemini.")
+            raw_fallback = self._call_gemini(prompt)
+            if raw_fallback:
+                try:
+                    parsed = json.loads(raw_fallback)
+                except json.JSONDecodeError:
+                    match = re.search(r"```(?:json)?\s*(.*?)\s*```", raw_fallback, re.DOTALL | re.IGNORECASE)
+                    if match:
+                        try:
+                            parsed = json.loads(match.group(1).strip())
+                        except:
+                            pass
+                
+                if parsed is None:
+                     logger.warning("Gemini fallback also returned malformed JSON.")
+        
+        if parsed is None:
+            return None
 
         # Cache successful result
         if parsed:

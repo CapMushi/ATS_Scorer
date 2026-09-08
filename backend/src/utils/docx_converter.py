@@ -1,9 +1,51 @@
 import os
+import hashlib
 import subprocess
 import logging
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# In-memory cache: content_hash -> pdf_bytes
+# Prevents re-converting the same DOCX file multiple times per session
+_conversion_cache: dict[str, bytes] = {}
+
+
+def get_content_hash(file_bytes: bytes) -> str:
+    return hashlib.md5(file_bytes).hexdigest()
+
+
+def convert_docx_to_pdf_bytes(file_bytes: bytes, filename: str, output_dir: str) -> Optional[bytes]:
+    """
+    Convert DOCX bytes to PDF bytes, with in-memory caching.
+    Same file content = instant return, no re-conversion.
+    """
+    content_hash = get_content_hash(file_bytes)
+    
+    if content_hash in _conversion_cache:
+        logger.info(f"DOCX cache HIT for {filename} — skipping conversion")
+        return _conversion_cache[content_hash]
+    
+    # Write to temp file for conversion
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False, dir=output_dir) as tmp:
+        tmp.write(file_bytes)
+        tmp_path = tmp.name
+    
+    try:
+        pdf_path = convert_docx_to_pdf(tmp_path, output_dir)
+        if pdf_path and os.path.exists(pdf_path):
+            with open(pdf_path, "rb") as f:
+                pdf_bytes = f.read()
+            _conversion_cache[content_hash] = pdf_bytes
+            logger.info(f"DOCX cache STORED for {filename} (cache size: {len(_conversion_cache)})")
+            return pdf_bytes
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+    
+    return None
+
 
 def convert_docx_to_pdf(docx_path: str, output_dir: str) -> Optional[str]:
     """

@@ -8,6 +8,7 @@ v2: temperature=0.0, seed=42 for deterministic outputs.
 import re
 import time
 import json
+import asyncio
 import hashlib
 import logging
 from typing import Optional
@@ -45,6 +46,9 @@ class LLMClient:
         
         # Response cache: hash(prompt) -> parsed response
         self._cache: dict[str, dict] = {}
+        
+        # Serialization lock — prevents parallel requests from hitting the LLM simultaneously
+        self._llm_lock = asyncio.Lock()
         
         self._init_clients()
 
@@ -84,15 +88,10 @@ class LLMClient:
 
     @property
     def is_available(self) -> bool:
-        """Check if LLM is available."""
+        """Check if LLM is generally configured."""
         if LLM_DISABLED:
             return False
-        if self._consecutive_failures >= self._max_failures_before_disable:
-            return False
-        now = time.time()
-        groq_ok = self._groq_available and now >= self._groq_rate_limit_until
-        gemini_ok = self._gemini_available and now >= self._gemini_rate_limit_until
-        return groq_ok or gemini_ok
+        return self._groq_available or self._gemini_available
 
     @property
     def active_provider(self) -> str:
@@ -104,7 +103,7 @@ class LLMClient:
             return "groq"
         if self._gemini_available and now >= self._gemini_rate_limit_until:
             return "gemini"
-        return "offline"
+        return "cooling_down"
 
     def _throttle(self):
         """Enforce minimum delay between calls to respect RPM limits."""
@@ -139,8 +138,8 @@ class LLMClient:
         except Exception as e:
             error_str = str(e).lower()
             if "429" in error_str or "rate" in error_str:
-                logger.warning("Groq rate limited, cooling down 5s")
-                self._groq_rate_limit_until = time.time() + 5
+                logger.warning("Groq rate limited, cooling down 3s")
+                self._groq_rate_limit_until = time.time() + 3
             else:
                 logger.warning(f"Groq call failed: {e}")
             return None
@@ -156,7 +155,7 @@ class LLMClient:
             from google.genai import types
 
             response = self._gemini_client.models.generate_content(
-                model="gemini-3.6-flash",
+                model="gemini-2.0-flash",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     temperature=0.0,       # DETERMINISTIC
@@ -171,11 +170,134 @@ class LLMClient:
         except Exception as e:
             error_str = str(e).lower()
             if "429" in error_str or "rate" in error_str or "quota" in error_str or "resource_exhausted" in error_str:
-                logger.warning(f"Gemini rate limited, cooling down 90s.")
-                self._gemini_rate_limit_until = time.time() + 90
+                logger.warning(f"Gemini rate limited, cooling down 20s.")
+                self._gemini_rate_limit_until = time.time() + 20
             else:
                 logger.warning(f"Gemini call failed: {e}")
             return None
+
+    async def call_async(self, prompt: str) -> Optional[str]:
+        """
+        Async version of call() with a lock to prevent parallel LLM floods.
+        Only one LLM call executes at a time across all concurrent requests.
+        If all providers are on cooldown, actively waits until one is ready.
+        Loops and retries up to 15 times if rate limits hit repeatedly.
+        """
+        if not self.is_available:
+            return None
+            
+        async with self._llm_lock:
+            max_retries = 30
+            for attempt in range(max_retries):
+                # Check if we need to wait for a cooldown to finish
+                while True:
+                    now = time.time()
+                    groq_ready = self._groq_available and now >= self._groq_rate_limit_until
+                    gemini_ready = self._gemini_available and now >= self._gemini_rate_limit_until
+                    
+                    if groq_ready or gemini_ready:
+                        break
+                        
+                    # Both are on cooldown, calculate how long to wait
+                    wait_times = []
+                    if self._groq_available: wait_times.append(self._groq_rate_limit_until - now)
+                    if self._gemini_available: wait_times.append(self._gemini_rate_limit_until - now)
+                    
+                    wait_time = max(0.1, min(wait_times))
+                    logger.info(f"LLM cooling down. Waiting {wait_time:.1f}s before next request... (Attempt {attempt+1}/{max_retries})")
+                    await asyncio.sleep(wait_time)
+
+                self._throttle()
+                self._last_call_time = time.time()
+                now = time.time()
+
+                if self._groq_available and now >= self._groq_rate_limit_until:
+                    result = self._call_groq(prompt)
+                    if result:
+                        return result
+                    # If it returned None, it might have hit a 429 and set a new cooldown.
+                    # We continue so the loop will sleep and try again.
+
+                if self._gemini_available and time.time() >= self._gemini_rate_limit_until:
+                    result = self._call_gemini(prompt)
+                    if result:
+                        return result
+                    # If it returned None, it might have hit a 429.
+                
+                # If both returned None (e.g. both got 429s), we loop back, sleep, and try again!
+                logger.warning(f"Both LLMs failed or rate limited on attempt {attempt+1}. Retrying...")
+
+            logger.error("Exhausted all LLM retries. Falling back to regex.")
+            return None
+
+    async def call_json_async(self, prompt: str) -> Optional[dict]:
+        """
+        Async, lock-protected version of call_json.
+        Use this in FastAPI route handlers to prevent rate limit floods.
+        """
+        cache_key = self._cache_key(prompt)
+        if cache_key in self._cache:
+            logger.info("LLM cache HIT — returning cached result")
+            return self._cache[cache_key]
+
+        raw = await self.call_async(prompt)
+        if not raw:
+            return None
+
+        raw = raw.strip()
+        parsed = None
+
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            pass
+
+        if parsed is None:
+            match = re.search(r"```(?:json)?\s*(.*?)\s*```", raw, re.DOTALL | re.IGNORECASE)
+            if match:
+                raw = match.group(1).strip()
+            else:
+                start = raw.find('{')
+                end = raw.rfind('}')
+                if start != -1 and end != -1:
+                    raw = raw[start:end + 1]
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                pass
+
+        if parsed is None:
+            repaired = self._repair_json(raw)
+            try:
+                parsed = json.loads(repaired)
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse primary LLM JSON response: {e}")
+
+        if parsed is None and self._gemini_available and time.time() >= self._gemini_rate_limit_until:
+            logger.warning("Primary LLM returned malformed JSON. Forcing fallback to Gemini.")
+            async with self._llm_lock:
+                raw_fallback = self._call_gemini(prompt)
+            if raw_fallback:
+                try:
+                    parsed = json.loads(raw_fallback)
+                except json.JSONDecodeError:
+                    match = re.search(r"```(?:json)?\s*(.*?)\s*```", raw_fallback, re.DOTALL | re.IGNORECASE)
+                    if match:
+                        try:
+                            parsed = json.loads(match.group(1).strip())
+                        except:
+                            pass
+                if parsed is None:
+                    logger.warning("Gemini fallback also returned malformed JSON.")
+
+        if parsed is None:
+            return None
+
+        if parsed:
+            self._cache[cache_key] = parsed
+            logger.info(f"LLM cache STORED (cache size: {len(self._cache)})")
+
+        return parsed
 
     def call(self, prompt: str) -> Optional[str]:
         """

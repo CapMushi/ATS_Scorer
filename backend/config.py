@@ -34,8 +34,8 @@ EMBEDDING_MODEL_NAME: str = "all-MiniLM-L6-v2"
 # === LLM Rate Limits ===
 GROQ_RPM: int = 30
 GEMINI_RPM: int = 15
-LLM_RETRY_DELAY_SECONDS: float = 5.0
-LLM_INTER_CALL_DELAY_SECONDS: float = 1.0
+LLM_RETRY_DELAY_SECONDS: float = 3.0
+LLM_INTER_CALL_DELAY_SECONDS: float = 2.5  # 2.5s gap = safe for 30 RPM (24/min max)
 
 # === Processing Limits ===
 MAX_CVS_PER_BATCH: int = 30

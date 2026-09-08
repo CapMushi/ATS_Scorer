@@ -12,6 +12,7 @@ from openpyxl.styles import (
     PatternFill, Font, Alignment, Border, Side,
 )
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.datavalidation import DataValidation
 
 from ..models.schemas import CandidateResult
 
@@ -36,10 +37,12 @@ _RED_FONT = Font(name="Calibri", size=10, color="991B1B")
 # Column definitions: (header, width, key_func)
 _COLUMNS = [
     ("Rank", 6),
+    ("CV Preview", 20),
     ("Candidate Name", 22),
     ("Email", 28),
     ("Phone", 18),
     ("LinkedIn", 30),
+    ("GitHub", 30),
     ("Location", 18),
     ("Final Score (%)", 14),
     ("Current Role", 24),
@@ -47,11 +50,11 @@ _COLUMNS = [
     ("Verified Skills", 30),
     ("Listed-Only Skills", 24),
     ("Missing Skills", 24),
-    ("Bonus Skills", 20),
     ("Skill Score (/35)", 14),
     ("Exp Score (/45)", 14),
     ("Keyword Score (/100)", 16),
     ("Summary", 50),
+    ("HR Status", 18),
 ]
 
 
@@ -62,10 +65,12 @@ def _build_row(idx: int, result: CandidateResult) -> list:
 
     return [
         idx,
+        "View CV",  # Placeholder for hyperlink
         result.candidate_name,
         result.contact.email,
         result.contact.phone,
         result.contact.linkedin,
+        result.contact.github,
         result.contact.location,
         result.final_score_pct,
         result.current_role,
@@ -73,11 +78,11 @@ def _build_row(idx: int, result: CandidateResult) -> list:
         ", ".join(result.contextual_skills) or "None",
         ", ".join(result.stuffed_skills) or "None",
         ", ".join(result.missing_skills) or "None",
-        ", ".join(result.nice_to_have_matched) or "None",
         subscores.skill_match,
         subscores.recent_exp,
         subscores.bm25_keyword,
         result.candidate_summary,
+        "Pending Review",
     ]
 
 
@@ -102,6 +107,9 @@ def generate_excel_report(
         cell.border = _THIN_BORDER
         ws.column_dimensions[get_column_letter(col_idx)].width = width
 
+    # Enable AutoFilter for the header row
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(_COLUMNS))}{len(results) + 1}"
+
     # Freeze header row
     ws.freeze_panes = "A2"
 
@@ -118,6 +126,19 @@ def generate_excel_report(
                 wrap_text=(col_idx == len(_COLUMNS)),  # Wrap summary column
             )
 
+            # Apply Hyperlinks dynamically based on column header
+            header = _COLUMNS[col_idx - 1][0]
+            if header == "CV Preview" and result.file_name:
+                cell.hyperlink = result.file_name
+                cell.font = Font(name="Calibri", size=10, color="0563C1", underline="single")
+            elif header == "Email" and value and "@" in str(value):
+                cell.hyperlink = f"mailto:{value}"
+                cell.font = Font(name="Calibri", size=10, color="0563C1", underline="single")
+            elif header in ["LinkedIn", "GitHub"] and value and isinstance(value, str) and "." in value:
+                url = value if value.startswith("http") else f"https://{value}"
+                cell.hyperlink = url
+                cell.font = Font(name="Calibri", size=10, color="0563C1", underline="single")
+
         # Score-based row coloring
         score = result.final_score_pct
         if score >= 65:
@@ -130,16 +151,21 @@ def generate_excel_report(
         for col_idx in range(1, len(_COLUMNS) + 1):
             ws.cell(row=row_num, column=col_idx).fill = row_fill
 
-        # Colored fonts for skill columns
-        ws.cell(row=row_num, column=10).font = _GREEN_FONT   # Verified
-        ws.cell(row=row_num, column=11).font = _AMBER_FONT   # Listed-only
-        ws.cell(row=row_num, column=12).font = _RED_FONT      # Missing
+        # Colored fonts for skill columns (dynamic indices)
+        verified_col = next((i for i, (h, _) in enumerate(_COLUMNS, 1) if h == "Verified Skills"), None)
+        listed_col = next((i for i, (h, _) in enumerate(_COLUMNS, 1) if h == "Listed-Only Skills"), None)
+        missing_col = next((i for i, (h, _) in enumerate(_COLUMNS, 1) if h == "Missing Skills"), None)
+        
+        if verified_col: ws.cell(row=row_num, column=verified_col).font = _GREEN_FONT
+        if listed_col: ws.cell(row=row_num, column=listed_col).font = _AMBER_FONT
+        if missing_col: ws.cell(row=row_num, column=missing_col).font = _RED_FONT
 
     # === Alternating row shading (subtle) ===
     alt_fill = PatternFill(start_color="F9FAFB", end_color="F9FAFB", fill_type="solid")
     for row_idx in range(2, ws.max_row + 1):
         if row_idx % 2 == 0:
-            score_cell = ws.cell(row=row_idx, column=7)
+            score_col = next((i for i, (h, _) in enumerate(_COLUMNS, 1) if h == "Final Score (%)"), 7)
+            score_cell = ws.cell(row=row_idx, column=score_col)
             try:
                 score_val = float(score_cell.value)
                 if 45 <= score_val < 65:
@@ -157,14 +183,31 @@ def generate_excel_report(
         chart.x_axis.title = "Experience (Years)"
         chart.y_axis.title = "Final Score (%)"
         
-        # Experience is col 9, Score is col 7
-        xvalues = Reference(ws, min_col=9, min_row=2, max_row=len(results)+1)
-        yvalues = Reference(ws, min_col=7, min_row=2, max_row=len(results)+1)
+        # Dynamically find Experience and Score columns for chart
+        exp_col = next((i for i, (h, _) in enumerate(_COLUMNS, 1) if h == "Experience (Yrs)"), 9)
+        score_col = next((i for i, (h, _) in enumerate(_COLUMNS, 1) if h == "Final Score (%)"), 7)
+
+        xvalues = Reference(ws, min_col=exp_col, min_row=2, max_row=len(results)+1)
+        yvalues = Reference(ws, min_col=score_col, min_row=2, max_row=len(results)+1)
         
         series = Series(yvalues, xvalues, title_from_data=False)
         # Add labels to points if possible, though OpenPyXL scatter doesn't easily do data labels without complex xml
         chart.series.append(series)
         ws_chart.add_chart(chart, "B2")
+
+    # === Add Data Validation for HR Status ===
+    if len(results) > 0:
+        dv = DataValidation(type="list", formula1='"Pending Review,To Interview,Rejected,Offered"', allow_blank=True)
+        dv.error = "Your entry is not in the list"
+        dv.errorTitle = "Invalid Entry"
+        dv.prompt = "Please select from the list"
+        dv.promptTitle = "Select Status"
+        
+        status_col_idx = next((i for i, (h, _) in enumerate(_COLUMNS, 1) if h == "HR Status"), len(_COLUMNS))
+        status_col_letter = get_column_letter(status_col_idx)
+        
+        dv.add(f"{status_col_letter}2:{status_col_letter}{len(results) + 1}")
+        ws.add_data_validation(dv)
 
     # Save to BytesIO
     output = io.BytesIO()

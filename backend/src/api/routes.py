@@ -22,7 +22,7 @@ from src.models import (
     AnalysisResponse, JDAnalysisResponse,
     HealthResponse, CandidateResult, ParsedCandidate,
 )
-from src.utils.docx_converter import convert_docx_to_pdf
+from src.utils.docx_converter import convert_docx_to_pdf, convert_docx_to_pdf_bytes
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -72,33 +72,26 @@ async def health_check():
 
 @router.post("/convert-docx")
 async def api_convert_docx(file: UploadFile = File(...)):
-    """Converts a DOCX file to PDF and returns the file."""
+    """Converts a DOCX file to PDF and returns the file. Results are cached by content hash."""
     if not file.filename.lower().endswith(".docx") and not file.filename.lower().endswith(".doc"):
         raise HTTPException(status_code=400, detail="Only .docx files are supported")
-        
+
     try:
+        file_bytes = await file.read()
         temp_dir = tempfile.mkdtemp()
-        docx_path = os.path.join(temp_dir, file.filename)
-        
-        with open(docx_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-            
-        pdf_path = convert_docx_to_pdf(docx_path, temp_dir)
-        
-        if not pdf_path or not os.path.exists(pdf_path):
+
+        pdf_bytes = convert_docx_to_pdf_bytes(file_bytes, file.filename or "file.docx", temp_dir)
+
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+        if not pdf_bytes:
             raise HTTPException(status_code=500, detail="Failed to convert DOCX to PDF")
-            
-        def cleanup():
-            try:
-                shutil.rmtree(temp_dir)
-            except Exception as e:
-                logger.error(f"Cleanup error: {e}")
-                
-        return FileResponse(
-            path=pdf_path,
-            filename=f"{os.path.splitext(file.filename)[0]}.pdf",
+
+        from fastapi.responses import Response
+        return Response(
+            content=pdf_bytes,
             media_type="application/pdf",
-            background=BackgroundTask(cleanup)
+            headers={"Content-Disposition": f'inline; filename="{os.path.splitext(file.filename or "cv")[0]}.pdf"'}
         )
     except Exception as e:
         logger.error(f"Error in /convert-docx: {e}")
@@ -124,7 +117,7 @@ async def analyze_jd(file: UploadFile = File(...)):
 
     if llm.is_available:
         prompt = build_jd_extraction_prompt(jd_text)
-        raw = llm.call_json(prompt)
+        raw = await llm.call_json_async(prompt)
         parsed = parse_jd_extraction(raw)
 
         if parsed:
@@ -274,7 +267,7 @@ async def analyze_single_candidate(
     if llm.is_available:
         prompt = build_cv_extraction_prompt(parsed.full_text, must_haves)
         logger.info(f"LLM is available, calling JSON for {parsed.file_name}")
-        raw = llm.call_json(prompt)
+        raw = await llm.call_json_async(prompt)
         if raw:
             logger.info(f"LLM call returned data of type: {type(raw)}")
             llm_data = parse_cv_extraction(raw)

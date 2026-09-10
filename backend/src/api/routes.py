@@ -181,8 +181,19 @@ async def analyze_candidates(
     for cv_file in cv_files:
         try:
             cv_content = await cv_file.read()
-            parsed = parse_cv(cv_content, file_name=cv_file.filename or "cv")
-            logger.info(f"Parsed CV '{cv_file.filename}' -> name: '{parsed.contact.name}', text: {len(parsed.full_text)} chars")
+            filename = cv_file.filename or "cv"
+            source_link = ""
+            
+            if "___" in filename:
+                message_id, original_filename = filename.split("___", 1)
+                filename = original_filename
+                import urllib.parse
+                encoded_id = urllib.parse.quote(message_id)
+                source_link = f"https://mail.google.com/mail/u/0/#search/rfc822msgid%3A{encoded_id}"
+                
+            parsed = parse_cv(cv_content, file_name=filename)
+            parsed.source_link = source_link
+            logger.info(f"Parsed CV '{filename}' -> name: '{parsed.contact.name}', text: {len(parsed.full_text)} chars")
             candidates.append(parsed)
         except Exception as e:
             logger.warning(f"Failed to parse {cv_file.filename}: {e}")
@@ -258,8 +269,19 @@ async def analyze_single_candidate(
 
     try:
         cv_content = await cv_file.read()
-        parsed = parse_cv(cv_content, file_name=cv_file.filename or "cv")
-        logger.info(f"Single parse CV '{cv_file.filename}'")
+        filename = cv_file.filename or "cv"
+        source_link = ""
+        
+        if "___" in filename:
+            message_id, original_filename = filename.split("___", 1)
+            filename = original_filename
+            import urllib.parse
+            encoded_id = urllib.parse.quote(message_id)
+            source_link = f"https://mail.google.com/mail/u/0/#search/rfc822msgid%3A{encoded_id}"
+            
+        parsed = parse_cv(cv_content, file_name=filename)
+        parsed.source_link = source_link
+        logger.info(f"Single parse CV '{filename}'")
     except Exception as e:
         logger.warning(f"Failed to parse {cv_file.filename}: {e}")
         raise HTTPException(status_code=400, detail=f"Failed to parse CV: {e}")

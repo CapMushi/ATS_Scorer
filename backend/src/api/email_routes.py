@@ -23,6 +23,7 @@ class EmailScanRequest(BaseModel):
 class ScannedFile(BaseModel):
     file_id: str
     filename: str
+    message_id: str = ""
 
 class EmailScanResponse(BaseModel):
     total_found: int
@@ -39,7 +40,11 @@ async def scan_emails_for_cvs(req: EmailScanRequest):
         for filepath, filename, message_id in cvs:
             file_id = str(uuid.uuid4())
             temp_file_store[file_id] = filepath
-            result_files.append(ScannedFile(file_id=file_id, filename=filename))
+            
+            # Clean up message_id for Gmail search URL
+            clean_msg_id = message_id.strip("<>") if message_id else ""
+            
+            result_files.append(ScannedFile(file_id=file_id, filename=filename, message_id=clean_msg_id))
             
         return {"total_found": len(result_files), "files": result_files}
         

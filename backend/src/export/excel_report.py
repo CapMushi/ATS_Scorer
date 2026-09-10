@@ -128,9 +128,13 @@ def generate_excel_report(
 
             # Apply Hyperlinks dynamically based on column header
             header = _COLUMNS[col_idx - 1][0]
-            if header == "CV Preview" and result.file_name:
-                cell.hyperlink = result.file_name
-                cell.font = Font(name="Calibri", size=10, color="0563C1", underline="single")
+            if header == "CV Preview":
+                if getattr(result, "source_link", None):
+                    cell.hyperlink = result.source_link
+                    cell.font = Font(name="Calibri", size=10, color="0563C1", underline="single")
+                elif result.file_name:
+                    cell.hyperlink = result.file_name
+                    cell.font = Font(name="Calibri", size=10, color="0563C1", underline="single")
             elif header == "Email" and value and "@" in str(value):
                 cell.hyperlink = f"mailto:{value}"
                 cell.font = Font(name="Calibri", size=10, color="0563C1", underline="single")

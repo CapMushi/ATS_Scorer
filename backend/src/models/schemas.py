@@ -76,6 +76,7 @@ class LLMExtraction(BaseModel):
 class ParsedCandidate(BaseModel):
     """A fully parsed candidate document."""
     file_name: str
+    source_link: str = ""
     full_text: str
     sections: ParsedSections
     contact: ContactInfo = Field(default_factory=ContactInfo)
@@ -109,6 +110,7 @@ class ScoringAudit(BaseModel):
 class CandidateResult(BaseModel):
     """Final scored result for a single candidate."""
     file_name: str
+    source_link: str = ""
     full_text: str = ""
     final_score_pct: float
     candidate_name: str = "Unknown"

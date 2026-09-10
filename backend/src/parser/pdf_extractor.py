@@ -150,5 +150,19 @@ def extract_blocks_from_pdf(
         sorted_blocks = _sort_blocks_by_layout(page_blocks, page_width)
         all_blocks.extend(sorted_blocks)
 
+        # Extract embedded hyperlinks that standard text extraction misses
+        for link in page.get_links():
+            url = link.get("uri", "")
+            if url and ("github" in url.lower() or "linkedin" in url.lower()):
+                all_blocks.append({
+                    "text": f"Embedded Link: {url}",
+                    "is_bold": False,
+                    "font_size": 10.0,
+                    "bbox": (0, 0, 0, 0),
+                    "x0": 0, "y0": 0,
+                    "x1": 0, "y1": 0,
+                    "page_num": page_idx + 1,
+                })
+
     doc.close()
     return all_blocks

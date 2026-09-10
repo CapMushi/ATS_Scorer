@@ -52,7 +52,7 @@ If the candidate has no professional experience, set experience_entries to [] an
 
 CV TEXT:
 ---
-{cv_text[:6000]}
+{cv_text}
 ---
 
 Return EXACTLY this JSON structure with ALL fields filled:

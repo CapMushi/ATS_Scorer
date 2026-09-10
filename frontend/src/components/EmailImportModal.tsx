@@ -65,7 +65,13 @@ export default function EmailImportModal({ isOpen, onClose, onImportComplete }: 
         if (!res.ok) continue;
         
         const blob = await res.blob();
-        const file = new File([blob], fileMeta.filename, { type: blob.type });
+        
+        // Encode message_id into the filename using a special delimiter so the backend can extract it
+        const finalFilename = fileMeta.message_id 
+          ? `${fileMeta.message_id}___${fileMeta.filename}`
+          : fileMeta.filename;
+          
+        const file = new File([blob], finalFilename, { type: blob.type });
         downloadedFiles.push(file);
       }
       

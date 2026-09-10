@@ -285,6 +285,7 @@ class ScoringPipeline:
 
             result = CandidateResult(
                 file_name=c.file_name,
+                source_link=c.source_link,
                 full_text=c.full_text,
                 final_score_pct=calibrated[i],
                 candidate_name=candidate_name,

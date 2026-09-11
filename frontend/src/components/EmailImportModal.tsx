@@ -66,12 +66,15 @@ export default function EmailImportModal({ isOpen, onClose, onImportComplete }: 
         
         const blob = await res.blob();
         
-        // Encode message_id and email into the filename using a special delimiter so the backend can extract them
-        const finalFilename = fileMeta.message_id 
-          ? `${fileMeta.message_id}___${email}___${fileMeta.filename}`
-          : fileMeta.filename;
-          
-        const file = new File([blob], finalFilename, { type: blob.type });
+        // Keep the original filename beautiful for the frontend UI
+        const file = new File([blob], fileMeta.filename, { type: blob.type });
+        
+        // Attach the hidden metadata for the backend to use later
+        if (fileMeta.message_id) {
+          (file as any).gmail_message_id = fileMeta.message_id;
+          (file as any).gmail_email = email;
+        }
+        
         downloadedFiles.push(file);
       }
       

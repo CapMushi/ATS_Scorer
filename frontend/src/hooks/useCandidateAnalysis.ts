@@ -155,21 +155,26 @@ export function useCandidateAnalysis({
               controller.signal
             );
             
-            if (result) {
+              if (result) {
               results.push(result);
               // Stream UI update instantly as ONE finishes
               setAllCandidates(prev => {
                 const newEmail = result.contact?.email?.toLowerCase().trim();
                 const newPhone = result.contact?.phone?.replace(/\D/g, '');
+                const newName = result.candidate_name?.toLowerCase().trim();
 
                 const filtered = prev.filter(c => {
                   if (c.file_name === result.file_name) return false;
                   
                   const cEmail = c.contact?.email?.toLowerCase().trim();
                   const cPhone = c.contact?.phone?.replace(/\D/g, '');
+                  const cName = c.candidate_name?.toLowerCase().trim();
                   
                   if (newEmail && cEmail && cEmail === newEmail) return false;
                   if (newPhone && cPhone && cPhone.length >= 7 && cPhone === newPhone) return false;
+                  
+                  // Deduplicate by exact name if filename/contact was slightly different or missing
+                  if (newName && cName && cName === newName && newName !== "unknown") return false;
                   
                   return true;
                 });

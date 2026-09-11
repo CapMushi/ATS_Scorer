@@ -43,7 +43,13 @@ export async function analyzeSingleCandidate(
   signal?: AbortSignal
 ) {
   const formData = new FormData();
-  formData.append("cv_file", cvFile);
+  
+  let uploadName = cvFile.name;
+  if ((cvFile as any).gmail_message_id) {
+    uploadName = `${(cvFile as any).gmail_message_id}___${(cvFile as any).gmail_email}___${cvFile.name}`;
+  }
+  
+  formData.append("cv_file", cvFile, uploadName);
   formData.append("jd_text", jdText);
   formData.append("target_yoe", targetYoe.toString());
   if (mustHaveSkills) formData.append("must_have_skills", mustHaveSkills);

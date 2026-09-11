@@ -208,26 +208,19 @@ async def analyze_candidates(
             if "___" in filename:
                 parts = filename.split("___")
                 if len(parts) >= 3:
-                    message_id, email_addr, original_filename = parts[0], parts[1], "___".join(parts[2:])
-                    import urllib.parse
-                    encoded_id = urllib.parse.quote(message_id)
-                    source_link = f"https://mail.google.com/mail/u/{email_addr}/#search/rfc822msgid%3A{encoded_id}"
-                    filename = original_filename
+                    filename = "___".join(parts[2:])
                 elif len(parts) == 2:
-                    message_id, original_filename = parts
-                    import urllib.parse
-                    encoded_id = urllib.parse.quote(message_id)
-                    source_link = f"https://mail.google.com/mail/u/0/#search/rfc822msgid%3A{encoded_id}"
-                    filename = original_filename
-            else:
-                # Save local file to uploads/ directory for previewing
-                safe_filename = f"{uuid.uuid4().hex[:8]}_{filename}"
-                file_path = os.path.join(UPLOAD_DIR, safe_filename)
-                with open(file_path, "wb") as f:
-                    f.write(cv_content)
-                if request:
-                    base_url = str(request.base_url).rstrip("/")
-                    source_link = f"{base_url}/downloads/{safe_filename}"
+                    filename = parts[1]
+
+            # ALWAYS save local file to uploads/ directory for previewing/downloading
+            safe_filename = f"{uuid.uuid4().hex[:8]}_{filename}"
+            file_path = os.path.join(UPLOAD_DIR, safe_filename)
+            with open(file_path, "wb") as f:
+                f.write(cv_content)
+
+            if request:
+                base_url = str(request.base_url).rstrip("/")
+                source_link = f"{base_url}/downloads/{safe_filename}"
                 
             parsed = parse_cv(cv_content, file_name=filename)
             parsed.source_link = source_link
@@ -314,25 +307,19 @@ async def analyze_single_candidate(
         if "___" in filename:
             parts = filename.split("___")
             if len(parts) >= 3:
-                message_id, email_addr, original_filename = parts[0], parts[1], "___".join(parts[2:])
-                import urllib.parse
-                encoded_id = urllib.parse.quote(message_id)
-                source_link = f"https://mail.google.com/mail/u/{email_addr}/#search/rfc822msgid%3A{encoded_id}"
-                filename = original_filename
+                filename = "___".join(parts[2:])
             elif len(parts) == 2:
-                message_id, original_filename = parts
-                import urllib.parse
-                encoded_id = urllib.parse.quote(message_id)
-                source_link = f"https://mail.google.com/mail/u/0/#search/rfc822msgid%3A{encoded_id}"
-                filename = original_filename
-        else:
-            safe_filename = f"{uuid.uuid4().hex[:8]}_{filename}"
-            file_path = os.path.join(UPLOAD_DIR, safe_filename)
-            with open(file_path, "wb") as f:
-                f.write(cv_content)
-            if request:
-                base_url = str(request.base_url).rstrip("/")
-                source_link = f"{base_url}/downloads/{safe_filename}"
+                filename = parts[1]
+
+        # ALWAYS save local file to uploads/ directory for previewing/downloading
+        safe_filename = f"{uuid.uuid4().hex[:8]}_{filename}"
+        file_path = os.path.join(UPLOAD_DIR, safe_filename)
+        with open(file_path, "wb") as f:
+            f.write(cv_content)
+
+        if request:
+            base_url = str(request.base_url).rstrip("/")
+            source_link = f"{base_url}/downloads/{safe_filename}"
             
         parsed = parse_cv(cv_content, file_name=filename)
         parsed.source_link = source_link

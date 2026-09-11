@@ -122,6 +122,15 @@ def parse_cv(
         contact_source = sections_dict["other"] + "\n" + full_text
 
     contact_data = extract_contact_info(contact_source)
+    
+    # Failsafe: Inject explicitly extracted URIs (embedded links) if Regex missed them
+    for b in blocks:
+        if b.get("type") == "metadata_link":
+            url = b.get("url", "").lower()
+            if "linkedin.com" in url and not contact_data.get("linkedin"):
+                contact_data["linkedin"] = b["url"]
+            elif "github.com" in url and not contact_data.get("github"):
+                contact_data["github"] = b["url"]
 
     # Name extraction: prefer block-based (finds large-font name in multi-column layouts)
     candidate_name = extract_name_from_blocks(blocks)

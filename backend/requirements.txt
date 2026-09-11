@@ -29,3 +29,4 @@ python-dotenv>=1.0.0
 
 # Type checking
 pydantic>=2.0.0
+json-repair>=0.30.0

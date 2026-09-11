@@ -22,8 +22,18 @@ from src.api.routes import router
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+import asyncio
+import time
+from contextlib import asynccontextmanager
+
+UPLOAD_DIR = os.path.join(_this_dir, "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 # === App Setup ===
 app = FastAPI(title="ATS Scorer v2", version="2.0.0")
+
+from fastapi.staticfiles import StaticFiles
+app.mount("/downloads", StaticFiles(directory=UPLOAD_DIR), name="downloads")
 
 app.add_middleware(
     CORSMiddleware,

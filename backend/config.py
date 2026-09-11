@@ -22,6 +22,7 @@ if _env_local.exists():
 # === LLM API Keys ===
 GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
 GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+GROQ_API_KEYS: list[str] = [k.strip() for k in os.getenv("GROQ_API_KEYS", "").split(",")] if os.getenv("GROQ_API_KEYS") else ([GROQ_API_KEY] if GROQ_API_KEY else [])
 LLM_DISABLED: bool = os.getenv("LLM_DISABLED", "false").lower() == "true"
 
 # === Backend Config ===
@@ -34,8 +35,8 @@ EMBEDDING_MODEL_NAME: str = "all-MiniLM-L6-v2"
 # === LLM Rate Limits ===
 GROQ_RPM: int = 30
 GEMINI_RPM: int = 15
-LLM_RETRY_DELAY_SECONDS: float = 3.0
-LLM_INTER_CALL_DELAY_SECONDS: float = 2.5  # 2.5s gap = safe for 30 RPM (24/min max)
+LLM_RETRY_DELAY_SECONDS: float = 5.0
+LLM_INTER_CALL_DELAY_SECONDS: float = 12.5  # 12.5s gap = safe for 5 RPM
 
 # === Processing Limits ===
 MAX_CVS_PER_BATCH: int = 30

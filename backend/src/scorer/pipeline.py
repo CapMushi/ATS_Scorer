@@ -258,12 +258,12 @@ class ScoringPipeline:
                 candidate_name = llm.candidate_name or contact.name
                 contact = ContactInfo(
                     name=candidate_name,
-                    email=llm.email or contact.email,
-                    phone=llm.phone or contact.phone,
-                    linkedin=llm.linkedin or contact.linkedin,
-                    github=llm.github or contact.github,
-                    portfolio=llm.portfolio or contact.portfolio,
-                    location=llm.location or contact.location,
+                    email=contact.email or llm.email,
+                    phone=contact.phone or llm.phone,
+                    linkedin=contact.linkedin or llm.linkedin,
+                    github=contact.github or llm.github,
+                    portfolio=contact.portfolio or llm.portfolio,
+                    location=contact.location or llm.location,
                 )
                 experience_entries = [
                     ExperienceEntry(**e.model_dump())

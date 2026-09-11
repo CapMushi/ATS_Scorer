@@ -14,7 +14,7 @@ import logging
 from typing import Optional
 
 from config import (
-    GEMINI_API_KEY, GROQ_API_KEY, LLM_DISABLED,
+    GEMINI_API_KEY, GROQ_API_KEY, GROQ_API_KEYS, LLM_DISABLED,
     LLM_RETRY_DELAY_SECONDS, LLM_INTER_CALL_DELAY_SECONDS,
 )
 
@@ -32,7 +32,7 @@ class LLMClient:
     """
 
     def __init__(self):
-        self._groq_client = None
+        self._groq_clients = []
         self._gemini_client = None 
         self._groq_available = False
         self._gemini_available = False
@@ -41,7 +41,7 @@ class LLMClient:
         self._consecutive_failures = 0
         self._max_failures_before_disable = 5
         
-        self._groq_rate_limit_until = 0.0
+        self._groq_rate_limit_until = []
         self._gemini_rate_limit_until = 0.0
         
         # Response cache: hash(prompt) -> parsed response
@@ -59,16 +59,20 @@ class LLMClient:
             return
 
         # Init Groq (Primary)
-        if GROQ_API_KEY:
+        if GROQ_API_KEYS:
             try:
                 from openai import OpenAI
-                self._groq_client = OpenAI(
-                    base_url="https://api.groq.com/openai/v1",
-                    api_key=GROQ_API_KEY,
-                    max_retries=0, # Disable auto-retries to instantly trigger Gemini fallback
-                )
-                self._groq_available = True
-                logger.info("Groq client initialized (qwen3.8-27b primary, temp=0, seed=42)")
+                for key in GROQ_API_KEYS:
+                    client = OpenAI(
+                        base_url="https://api.groq.com/openai/v1",
+                        api_key=key,
+                        max_retries=0, # Disable auto-retries to instantly trigger fallback
+                    )
+                    self._groq_clients.append(client)
+                    self._groq_rate_limit_until.append(0.0)
+                
+                self._groq_available = len(self._groq_clients) > 0
+                logger.info(f"Groq clients initialized ({len(self._groq_clients)} keys, qwen3.8-27b primary)")
             except ImportError:
                 logger.warning("openai package not installed. Run: pip install openai")
             except Exception as e:
@@ -99,7 +103,7 @@ class LLMClient:
         if not self.is_available:
             return "offline"
         now = time.time()
-        if self._groq_available and now >= self._groq_rate_limit_until:
+        if self._groq_available and any(now >= t for t in self._groq_rate_limit_until):
             return "groq"
         if self._gemini_available and now >= self._gemini_rate_limit_until:
             return "gemini"
@@ -117,32 +121,36 @@ class LLMClient:
 
     def _call_groq(self, prompt: str) -> Optional[str]:
         """Call Groq API with deterministic settings. Returns response text or None."""
-        if not self._groq_client:
-            return None
-        if time.time() < self._groq_rate_limit_until:
+        if not self._groq_clients:
             return None
 
-        try:
-            response = self._groq_client.chat.completions.create(
-                model="qwen/qwen3.8-27b",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.0,       # DETERMINISTIC: no randomness
-                seed=42,               # DETERMINISTIC: fixed seed
-                max_tokens=3000,
-                response_format={"type": "json_object"},
-            )
-            result = response.choices[0].message.content
-            if result and len(result.strip()) > 50:
-                return result
-            return None
-        except Exception as e:
-            error_str = str(e).lower()
-            if "429" in error_str or "rate" in error_str:
-                logger.warning("Groq rate limited, cooling down 3s")
-                self._groq_rate_limit_until = time.time() + 3
-            else:
-                logger.warning(f"Groq call failed: {e}")
-            return None
+        now = time.time()
+        for i, client in enumerate(self._groq_clients):
+            if now >= self._groq_rate_limit_until[i]:
+                try:
+                    response = client.chat.completions.create(
+                        model="qwen/qwen3.8-27b",
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=0.0,       # DETERMINISTIC: no randomness
+                        seed=42,               # DETERMINISTIC: fixed seed
+                        max_tokens=3000,
+                        response_format={"type": "json_object"},
+                    )
+                    result = response.choices[0].message.content
+                    if result and len(result.strip()) > 50:
+                        return result
+                    return None
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if "429" in error_str or "rate" in error_str:
+                        logger.warning(f"Groq key #{i+1} rate limited, cooling down 60s")
+                        self._groq_rate_limit_until[i] = time.time() + 60
+                    else:
+                        logger.warning(f"Groq call failed on key #{i+1}: {e}")
+                    # Try next key
+                    continue
+                    
+        return None
 
     def _call_gemini(self, prompt: str) -> Optional[str]:
         """Call Gemini API. Returns response text or None."""
@@ -155,7 +163,7 @@ class LLMClient:
             from google.genai import types
 
             response = self._gemini_client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-3.6-flash",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     temperature=0.0,       # DETERMINISTIC
@@ -192,7 +200,7 @@ class LLMClient:
                 # Check if we need to wait for a cooldown to finish
                 while True:
                     now = time.time()
-                    groq_ready = self._groq_available and now >= self._groq_rate_limit_until
+                    groq_ready = self._groq_available and any(now >= t for t in self._groq_rate_limit_until)
                     gemini_ready = self._gemini_available and now >= self._gemini_rate_limit_until
                     
                     if groq_ready or gemini_ready:
@@ -200,7 +208,8 @@ class LLMClient:
                         
                     # Both are on cooldown, calculate how long to wait
                     wait_times = []
-                    if self._groq_available: wait_times.append(self._groq_rate_limit_until - now)
+                    if self._groq_available: 
+                        wait_times.extend([t - now for t in self._groq_rate_limit_until if t > now])
                     if self._gemini_available: wait_times.append(self._gemini_rate_limit_until - now)
                     
                     wait_time = max(0.1, min(wait_times))
@@ -211,7 +220,7 @@ class LLMClient:
                 self._last_call_time = time.time()
                 now = time.time()
 
-                if self._groq_available and now >= self._groq_rate_limit_until:
+                if self._groq_available and any(now >= t for t in self._groq_rate_limit_until):
                     result = self._call_groq(prompt)
                     if result:
                         return result
@@ -248,47 +257,27 @@ class LLMClient:
         parsed = None
 
         try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            pass
-
-        if parsed is None:
-            match = re.search(r"```(?:json)?\s*(.*?)\s*```", raw, re.DOTALL | re.IGNORECASE)
-            if match:
-                raw = match.group(1).strip()
-            else:
-                start = raw.find('{')
-                end = raw.rfind('}')
-                if start != -1 and end != -1:
-                    raw = raw[start:end + 1]
-            try:
-                parsed = json.loads(raw)
-            except json.JSONDecodeError:
-                pass
-
-        if parsed is None:
-            repaired = self._repair_json(raw)
-            try:
+            import json_repair
+            repaired = json_repair.repair_json(raw)
+            if repaired:
                 parsed = json.loads(repaired)
-            except json.JSONDecodeError as e:
-                logger.warning(f"Failed to parse primary LLM JSON response: {e}")
+        except Exception as e:
+            logger.warning(f"json_repair failed to parse primary LLM JSON: {e}")
 
         if parsed is None and self._gemini_available and time.time() >= self._gemini_rate_limit_until:
-            logger.warning("Primary LLM returned malformed JSON. Forcing fallback to Gemini.")
+            logger.warning("Primary LLM returned unrecoverable JSON. Forcing fallback to Gemini.")
             async with self._llm_lock:
                 raw_fallback = self._call_gemini(prompt)
             if raw_fallback:
                 try:
-                    parsed = json.loads(raw_fallback)
-                except json.JSONDecodeError:
-                    match = re.search(r"```(?:json)?\s*(.*?)\s*```", raw_fallback, re.DOTALL | re.IGNORECASE)
-                    if match:
-                        try:
-                            parsed = json.loads(match.group(1).strip())
-                        except:
-                            pass
+                    import json_repair
+                    repaired_fallback = json_repair.repair_json(raw_fallback)
+                    if repaired_fallback:
+                        parsed = json.loads(repaired_fallback)
+                except Exception as e:
+                    logger.warning(f"json_repair failed to parse Gemini fallback JSON: {e}")
                 if parsed is None:
-                    logger.warning("Gemini fallback also returned malformed JSON.")
+                    logger.warning("Gemini fallback also returned unrecoverable JSON.")
 
         if parsed is None:
             return None
@@ -312,7 +301,7 @@ class LLMClient:
 
         now = time.time()
 
-        if self._groq_available and now >= self._groq_rate_limit_until:
+        if self._groq_available and any(now >= t for t in self._groq_rate_limit_until):
             result = self._call_groq(prompt)
             if result:
                 self._consecutive_failures = 0
@@ -390,7 +379,11 @@ class LLMClient:
                             pass
                 
                 if parsed is None:
-                     logger.warning("Gemini fallback also returned malformed JSON.")
+                    repaired_fallback = self._repair_json(raw_fallback)
+                    try:
+                        parsed = json.loads(repaired_fallback)
+                    except json.JSONDecodeError:
+                        logger.warning("Gemini fallback also returned malformed JSON.")
         
         if parsed is None:
             return None
@@ -414,13 +407,15 @@ class LLMClient:
         text = re.sub(r'(?<![""])#[^\n"]*(?=\n|$)', '', text)
         text = re.sub(r',\s*([\]}])', r'\1', text)
         text = re.sub(r'\.\.\.', '""', text)
-        text = re.sub(r"(?<=[{,:\[])(\s*)'([^']*)'(?=\s*[,:\]}])", r'\1"\2"', text)
+        text = re.sub(r'(?<=[{,:\[])(\s*)\'([^\']*)\'(?=\s*[,:\]}])', r'\1"\2"', text)
+        # Fix missing commas between lines (e.g. "value" \n "key")
+        text = re.sub(r'(["\]}])\s*\n\s*(["\[{])', r'\1,\n\2', text)
         text = re.sub(r',\s*([\]}])', r'\1', text)
         return text.strip()
 
     def reset_rate_limits(self):
-        self._groq_available = bool(self._groq_client)
+        self._groq_available = len(self._groq_clients) > 0
         self._gemini_available = bool(self._gemini_client)
         self._consecutive_failures = 0
-        self._groq_rate_limit_until = 0.0
+        self._groq_rate_limit_until = [0.0] * len(self._groq_clients)
         self._gemini_rate_limit_until = 0.0

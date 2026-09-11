@@ -131,7 +131,7 @@ export function useCandidateAnalysis({
       let completedCount = 0;
       const totalCount = filesToProcess.length;
       
-      const MAX_CONCURRENT = 3;
+      const MAX_CONCURRENT = 1;
       const batches = [];
       
       // Chunk the files to process into batches of 12
@@ -159,7 +159,22 @@ export function useCandidateAnalysis({
               results.push(result);
               // Stream UI update instantly as ONE finishes
               setAllCandidates(prev => {
-                const updated = [...prev, result].sort((a, b) => b.final_score_pct - a.final_score_pct);
+                const newEmail = result.contact?.email?.toLowerCase().trim();
+                const newPhone = result.contact?.phone?.replace(/\D/g, '');
+
+                const filtered = prev.filter(c => {
+                  if (c.file_name === result.file_name) return false;
+                  
+                  const cEmail = c.contact?.email?.toLowerCase().trim();
+                  const cPhone = c.contact?.phone?.replace(/\D/g, '');
+                  
+                  if (newEmail && cEmail && cEmail === newEmail) return false;
+                  if (newPhone && cPhone && cPhone.length >= 7 && cPhone === newPhone) return false;
+                  
+                  return true;
+                });
+
+                const updated = [...filtered, result].sort((a, b) => b.final_score_pct - a.final_score_pct);
                 localforage.setItem('cached_candidates', updated); // Persist to IndexedDB
                 return updated;
               });

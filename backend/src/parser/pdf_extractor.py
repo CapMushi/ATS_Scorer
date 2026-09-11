@@ -155,13 +155,12 @@ def extract_blocks_from_pdf(
             url = link.get("uri", "")
             if url and ("github" in url.lower() or "linkedin" in url.lower()):
                 all_blocks.append({
-                    "text": f"Embedded Link: {url}",
+                    "type": "metadata_link",
+                    "url": url,
+                    "text": "",  # To not break other code expecting 'text'
                     "is_bold": False,
-                    "font_size": 10.0,
+                    "font_size": 0.0,
                     "bbox": (0, 0, 0, 0),
-                    "x0": 0, "y0": 0,
-                    "x1": 0, "y1": 0,
-                    "page_num": page_idx + 1,
                 })
 
     doc.close()

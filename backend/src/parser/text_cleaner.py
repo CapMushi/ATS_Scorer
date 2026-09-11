@@ -93,12 +93,12 @@ _PHONE_PATTERN = re.compile(
 )
 
 _LINKEDIN_PATTERN = re.compile(
-    r"(?:https?://)?(?:www\.)?linkedin\.com/in/[\w\-_%]+",
+    r"(?:https?://)?(?:www\.)?linkedin\.com/(?:in|profile|pub|comm/in)/[\w\-_%]+",
     re.IGNORECASE
 )
 
 _GITHUB_PATTERN = re.compile(
-    r"(?:https?://)?(?:www\.)?github\.com/[\w\-]+",
+    r"(?:https?://)?(?:www\.)?github\.com/[\w\-_%]+",
     re.IGNORECASE
 )
 

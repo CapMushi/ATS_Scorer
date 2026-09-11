@@ -3,8 +3,9 @@ import time
 import logging
 import tempfile
 import shutil
+import uuid
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import StreamingResponse, FileResponse
 from starlette.background import BackgroundTask
 from typing import Optional
@@ -26,6 +27,9 @@ from src.utils.docx_converter import convert_docx_to_pdf, convert_docx_to_pdf_by
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Globals will be injected or imported from a shared state, 
 # but for now, we'll keep the lazy loaders here to avoid circular imports.
@@ -98,6 +102,22 @@ async def api_convert_docx(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/uploads/{filename}")
+async def delete_uploaded_file(filename: str):
+    """Delete a temporary uploaded file."""
+    # Prevent path traversal
+    safe_filename = os.path.basename(filename)
+    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+            return {"status": "ok"}
+        except Exception as e:
+            logger.error(f"Failed to delete {file_path}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to delete file")
+    return {"status": "not_found"}
+
+
 @router.post("/parse-jd", response_model=JDAnalysisResponse)
 async def analyze_jd(file: UploadFile = File(...)):
     """Parse a JD and extract skills + requirements."""
@@ -152,6 +172,7 @@ async def analyze_candidates(
     must_have_skills: Optional[str] = Form(None),
     nice_to_have_skills: Optional[str] = Form(None),
     target_yoe: float = Form(0.0),
+    request: Request = None,
 ):
     """Full analysis pipeline: parse JD + CVs, score, rank."""
     start_time = time.time()
@@ -185,11 +206,28 @@ async def analyze_candidates(
             source_link = ""
             
             if "___" in filename:
-                message_id, original_filename = filename.split("___", 1)
-                filename = original_filename
-                import urllib.parse
-                encoded_id = urllib.parse.quote(message_id)
-                source_link = f"https://mail.google.com/mail/u/0/#search/rfc822msgid%3A{encoded_id}"
+                parts = filename.split("___")
+                if len(parts) >= 3:
+                    message_id, email_addr, original_filename = parts[0], parts[1], "___".join(parts[2:])
+                    import urllib.parse
+                    encoded_id = urllib.parse.quote(message_id)
+                    source_link = f"https://mail.google.com/mail/u/{email_addr}/#search/rfc822msgid%3A{encoded_id}"
+                    filename = original_filename
+                elif len(parts) == 2:
+                    message_id, original_filename = parts
+                    import urllib.parse
+                    encoded_id = urllib.parse.quote(message_id)
+                    source_link = f"https://mail.google.com/mail/u/0/#search/rfc822msgid%3A{encoded_id}"
+                    filename = original_filename
+            else:
+                # Save local file to uploads/ directory for previewing
+                safe_filename = f"{uuid.uuid4().hex[:8]}_{filename}"
+                file_path = os.path.join(UPLOAD_DIR, safe_filename)
+                with open(file_path, "wb") as f:
+                    f.write(cv_content)
+                if request:
+                    base_url = str(request.base_url).rstrip("/")
+                    source_link = f"{base_url}/downloads/{safe_filename}"
                 
             parsed = parse_cv(cv_content, file_name=filename)
             parsed.source_link = source_link
@@ -259,6 +297,7 @@ async def analyze_single_candidate(
     must_have_skills: Optional[str] = Form(None),
     nice_to_have_skills: Optional[str] = Form(None),
     target_yoe: float = Form(0.0),
+    request: Request = None,
 ):
     """Analyze a single candidate for streaming architecture."""
     pipeline = get_pipeline()
@@ -273,11 +312,27 @@ async def analyze_single_candidate(
         source_link = ""
         
         if "___" in filename:
-            message_id, original_filename = filename.split("___", 1)
-            filename = original_filename
-            import urllib.parse
-            encoded_id = urllib.parse.quote(message_id)
-            source_link = f"https://mail.google.com/mail/u/0/#search/rfc822msgid%3A{encoded_id}"
+            parts = filename.split("___")
+            if len(parts) >= 3:
+                message_id, email_addr, original_filename = parts[0], parts[1], "___".join(parts[2:])
+                import urllib.parse
+                encoded_id = urllib.parse.quote(message_id)
+                source_link = f"https://mail.google.com/mail/u/{email_addr}/#search/rfc822msgid%3A{encoded_id}"
+                filename = original_filename
+            elif len(parts) == 2:
+                message_id, original_filename = parts
+                import urllib.parse
+                encoded_id = urllib.parse.quote(message_id)
+                source_link = f"https://mail.google.com/mail/u/0/#search/rfc822msgid%3A{encoded_id}"
+                filename = original_filename
+        else:
+            safe_filename = f"{uuid.uuid4().hex[:8]}_{filename}"
+            file_path = os.path.join(UPLOAD_DIR, safe_filename)
+            with open(file_path, "wb") as f:
+                f.write(cv_content)
+            if request:
+                base_url = str(request.base_url).rstrip("/")
+                source_link = f"{base_url}/downloads/{safe_filename}"
             
         parsed = parse_cv(cv_content, file_name=filename)
         parsed.source_link = source_link

@@ -115,7 +115,27 @@ export default function Home() {
     });
   };
 
+  const deleteRemoteUpload = async (source_link: string) => {
+    if (source_link && source_link.includes("/downloads/")) {
+      const filename = source_link.split("/downloads/").pop();
+      if (filename) {
+        try {
+          await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"}/uploads/${filename}`, {
+            method: "DELETE",
+            headers: { "ngrok-skip-browser-warning": "true" }
+          });
+        } catch (e) {
+          console.error("Failed to delete remote file", e);
+        }
+      }
+    }
+  };
+
   const handleClearAllCvs = () => {
+    // Delete all temporary uploaded PDFs from backend
+    allCandidates.forEach(c => {
+      if (c.source_link) deleteRemoteUpload(c.source_link);
+    });
     setCvFiles([]);
     setAllCandidates([]);
     localforage.removeItem('cached_files');
@@ -126,6 +146,9 @@ export default function Home() {
   };
 
   const handleRemoveCandidateResult = (candidateToRemove: any) => {
+    if (candidateToRemove.source_link) {
+      deleteRemoteUpload(candidateToRemove.source_link);
+    }
     setAllCandidates(prev => {
       const updated = prev.filter(c => c.file_name !== candidateToRemove.file_name);
       localforage.setItem('cached_candidates', updated);
